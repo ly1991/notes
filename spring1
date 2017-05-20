@@ -1,0 +1,257 @@
+2、IOC   amend test
+	接口注入：实现不必要的接口，带有侵入性，不提倡
+	构造方法注入：	优点：对象在构造完成后即已进入就绪状态，可以马上使用。
+					缺点：依赖对象比较多时，构造方法的参数列表会比较长。而通过反射构造对象时，对相同类型的参数处理较困难，维护
+					和使用也比较麻烦。而且构造方法无法被继承，无法设置默认值。对于非必须的依赖处理，可能需要引入多个构造方法，
+					而参数数量的变动可能造成维护上的不便。
+	setter方法注入：优点：描述性好，可继承，允许设置默认值
+					缺点：对象无法在构造完成之后马上进入就绪状态。
+
+4、BeanFactory
+	BeanFactory：	基础类型的IOC容器，提供完整的IOC服务支持。如果没有特殊指定，默认采用延迟初始化策略（lazy-load）。只有当客户端
+				需要访问容器中的某个对象时，才对该对象进行初始化以及依赖注入操作。所以，容器启动初期速度较快，所需要的资源有限，
+				对于资源有限，并且功能要求不是很严格的场景，BeanFactory是比较合适的IOC容器选择。
+	ApplicationContext：	ApplicationContext是在BeanFactory的基础上构建的，是相对比较高级的容器实现，除了拥有BeanFactory的所有
+						支持，ApplicationContext还提供了事件发布、国际化支持等高级特性。ApplicationContext所管理的对象，在该类型
+						容器启动之后，默认全部初始化并绑定完成。所以，ApplicationContext要求更多的系统资源，启动时间也较长。在一
+						些系统资源充足，并且要求更多功能的场景中，ApplicationContext的容器比较合适。
+4.2、BeanFactory的对象注册和依赖绑定方式
+	4.2.1、直接编码方式
+		DefaultListableBeanFactory implments BeanFavtory ，BeanDefinitionRegistry（Bean注册管理）
+	4.2.2、外部配置文件方式
+		Spring的IOC容器支持两种配置文件格式：Properties文件和XML文件（也可以引入自己的文件格式）
+		根据不同的外部配置文件格式，给出相应的BeanDefinitionReader实现类，由BeanDefinitionReader相应实现类负责将相应的而配置文件
+	内容读取并映射到BeanDefinition，然后将映射后的BeanDefinition注册到一个BeanDefinitionRegistry，之后BeanDefinitionRegistry即
+	完成Bean的注册和加载。
+		（1）、Properties配置格式的加载
+			public static void main(String[] args){	
+				DefaultListableBeanFactory beanRegistry = new DefaultListableBeanFactory();
+				BeanFactory container = (BeanFactory)bindViaPropertiesFile(beanRegistry);
+				FXNewsProvider newsProvider = (FXNewsProvider)container.getBean("djNewsProvider");
+				newsProvider.getAndPersistNews();
+			}
+			
+			public static BeanFactory bindViaPropertiesFile(BeanDefinitionRegistry registry){
+				PropertiesBeanDefinitionReader reader = new PropertiesBeanDefinitionReader(registry);
+				reader.loadBeanDefinitions("classpath:../../binding-config.properties");
+				return (BeanFactory)registry;	
+			}
+		（2）、XML配置格式的加载
+				public static BeanFactory bindViaXMLFile(BeanDefinitionRegistry registry){ 
+					XmlBeanDefinitionReader reader = new XmlBeanDefinitionReader(registry);
+					reader.loadBeanDefinitions("classpath:../news-config.xml");
+					return (BeanFactory)registry; 
+					// 或者直接
+					//return new XmlBeanFactory(new ClassPathResource("../news-config.xml"));
+				}
+				
+				除了提供XmlBeanDefinitionReader用于XML格式配置文件的加载，Spring还在DefaultListableBeanFactory的基础上构建了
+			简化XML格式配置加载的XmlBeanFactory实现。从以上代码最后注释掉的一行，你可以看到使用了XmlBeanFactory之后，完成XML
+			的加载和BeanFactory的初始化是多么简单。
+	4.2.3、注解方式
+4.3、BeanFactory的XML之旅
+	4.3.1、<beans>和<bean>
+			<beans>
+				<description>
+				<import>
+				<bean>
+			</beans>
+			<beans>属性： 	default-lazy-init：true、false（默认值）；是否进行延迟初始化。
+							default-autowire：no（默认值）、byName、byType、constructor、autodetect；绑定方式
+							default-dependency-check：none（默认值）、objects、simple、all；依赖检查
+							default-init-method：初始化方法
+							default-destory-method：对象销毁方法
+	4.3.5、bean的scope
+		（1）、singleton
+			对象实例数量：单例
+			对象存活时间：从第一次被请求而实例化开始，只要容器不销毁或者退出，该实例就已知存活。默认scope为singleton。
+		（2）、prototype
+			容器在接到该类型对象的请求时，会每次都重新生成一个新的对象实例给请求方。请求方需要自己负责当前返回对象的后继生命
+		周期的管理工作，包括销毁。所以对于请求方不能共享使用的对象类型，应该将其定义为prototype。
+		（3）request、session、globalsession（只适用于web应用程序，通常与XmlWebApplicationContext共同使用）
+			request:XmlWebApplicationContext会为每个HTTP请求创建一个全新的RequestProcessor对象供当前请求使用，请求结束后销毁。
+			session：用户的登录信息
+			globalsession:应用在基于portlet的web应用程序中，映射到global范围的session。
+		（4）、自定义scope类型
+			实现org.springframework.beans.factory.config.Scope接口
+			public interface Scope {
+				Object get(String name, ObjectFactory objectFactory);
+				Object remove(String name);
+				void registerDestructionCallback(String name, Runnable callback);
+				String getConversationId();
+			}
+			自定义的ThreadScope：
+			public class ThreadScope implements Scope {
+				private final ThreadLocal threadScope = new ThreadLocal() {
+					protected Object initialValue() {
+						return new HashMap();
+					}
+				};
+				public Object get(String name, ObjectFactory objectFactory) {
+					Map scope = (Map) threadScope.get();
+					Object object = scope.get(name);
+					if(object==null) {
+						object = objectFactory.getObject();
+						scope.put(name, object);
+					}
+					return object;
+				}
+				public Object remove(String name) {
+					Map scope = (Map) threadScope.get();
+					return scope.remove(name);
+				}
+				public void registerDestructionCallback(String name, Runnable callback) {
+				}
+				...
+			}
+	4.3.6、工厂方法与FactoryBean
+		工厂方法模式：提供一个工厂类来实例化具体的接口实现类，主体对象只需要依赖工厂类。
+		（1）、静态工厂方法
+			假设某个第三方库发布了BarInterface，为了向使用该接口的客户端对象屏蔽以后可能对BarInterface实现类的变动，
+			同时还提供了一个静态的工厂方法实现类StaticBarInterfaceFactory，
+			public class StaticBarInterfaceFactory{
+				public static BarInterface getInstance(){
+					return new BarInterfaceImpl();
+				}
+			}
+			注入配置：
+			<bean id="foo" class="...Foo">
+				<property name="barInterface">
+					<ref bean="bar"/>
+				</property>
+			</bean>
+			<bean id="bar" class="...StaticBarInterfaceFactory" factory-method="getInstance"/>
+		（2）、非静态工厂方法
+			public class NonStaticBarInterfaceFactory{
+				public BarInterface getInstance(){
+					return new BarInterfaceImpl();
+				} 
+				...
+			}
+
+			<bean id="foo" class="...Foo">
+				<property name="barInterface">
+					<ref bean="bar"/>
+				</property>
+			</bean> 
+			<bean id="barFactory" class="...NonStaticBarInterfaceFactory"/>
+			<bean id="bar" factory-bean="barFactory" factory-method="getInstance"/>
+		（3）、FactoryBean
+			FactoryBean是Spring容器提供的一种可以扩展容器对象实例化逻辑的接口。
+			当某些对象的实例化过程过于烦琐，通过XML配置过于复杂，使我们宁愿使用Java代码来完成这个实例化过程的时候，或者，
+			某些第三方库不能直接注册到Spring容器的时候，就可以实现org.springframework.beans.factory.FactoryBean接口，
+			给出自己的对象实例化逻辑代码。
+			public interface FactoryBean {
+				Object getObject() throws Exception;
+				Class getObjectType();
+				boolean isSingleton();
+			}
+	4.3.7、偷梁换柱
+		方法注入（Method Injection）、方法替换（Method Replacement）
+		虽然FXNewsBean拥有prototype类型的scope，但当容器将一个FXNewsBean的实例注入MockNewsPersister之后， MockNewsPersister
+	就会一直持有这个FXNewsBean实例的引用。虽然每次输出都调用了getNewsBean()方法并返回了 FXNewsBean 的实例，但实际上每次
+	返回的都是MockNewsPersister持有的容器第一次注入的实例。
+		解决问题的关键在于保证getNewsBean()方法每次从容器中取得新的FXNewsBean实例，而不是每次都返回其持有的单一实例。
+		（1）、方法注入
+			让getNewsBean方法声明符合规定的格式，并在配置文件中通知容器，当该方法被调用的时候，每次返回指定类型的对象实例即可。
+			方法声明需要符合的规格定义如下：				
+			<public|protected> [abstract] <return-type> theMethodName(no-arguments)；
+			该方法必须能够被子类实现或者覆写，因为容器会为我们要进行方法注入的对象使用Cglib动态生成一个子类实现，从而替代当前对象。
+			<bean id="newsBean" class="..domain.FXNewsBean" singleton="false">
+			</bean>
+			<bean id="mockPersister" class="..impl.MockNewsPersister">
+				<lookup-method name="getNewsBean" bean="newsBean"/>
+			</bean>
+		（2）、殊途同归
+			使用BeanFactoryAware接口；
+			只要在实现getNewsBean()方法的时候，能够保证每次调用BeanFactory的getBean("newsBean")，就同样可以每次都取得新的
+			FXNewsBean对象实例。现在，我们唯一需要的，就是让MockNewsPersister拥有一个BeanFactory的引用。 
+			public class MockNewsPersister implements IFXNewsPersister,BeanFactoryAware {
+				private BeanFactory beanFactory;
+				public void setBeanFactory(BeanFactory bf) throws BeansException {
+					this.beanFactory = bf;
+				}
+				public void persistNews(FXNewsBean bean) { 15
+					persistNews();
+				}
+				public void persistNews()
+				{ 
+					System.out.println("persist bean:"+getNewsBean());
+				}
+				public FXNewsBean getNewsBean() { 
+					return beanFactory.getBean("newsBean");
+				}
+			}
+			配置简化为：
+			<bean id="newsBean" class="..domain.FXNewsBean" singleton="false"></bean>
+			<bean id="mockPersister" class="..impl.MockNewsPersister"></bean>
+
+			使用ObjectFactoryCreatingFactoryBean：
+			public class MockNewsPersister implements IFXNewsPersister {
+				private ObjectFactory newsBeanFactory;
+				public void persistNews(FXNewsBean bean) {
+					persistNews();
+				}
+				public void persistNews(){
+					System.out.println("persist bean:"+getNewsBean());
+				}
+				public FXNewsBean getNewsBean() {
+					return newsBeanFactory.getObject();
+				}
+				public void setNewsBeanFactory(ObjectFactory newsBeanFactory) {
+					this.newsBeanFactory = newsBeanFactory;
+				}
+			}
+		（3）、方法替换
+			public class FXNewsProviderMethodReplacer implements MethodReplacer {
+				private static final transient Log logger = LogFactory.getLog(FXNewsProviderMethodReplacer.class);
+				public Object reimplement(Object target, Method method, Object[] args) throws Throwable {
+					logger.info("before executing method["+method.getName()+"] on Object["+target.getClass().getName()+"].");
+					
+					System.out.println("sorry,We will do nothing this time.");
+					
+					logger.info("end of executing method["+method.getName()+"] on Object["+target.getClass().getName()+"].");
+					return null;
+				}
+			}
+4.4、容器背后的秘密
+	4.4.1、战略观望
+		（1）、容器启动阶段
+			加载配置；
+			分析配置信息（BeanDefinitionReader）；
+			装备到BeanDefinition（注册到BeanDefinitionRegistry）；
+			其他处理；
+		（2）、Bean实例化阶段
+			实例化对象；
+			装配依赖；
+			生命周期回调；
+			对象其他处理；
+			注册回调接口；
+	4.4.2、插手容器的启动
+		org.springframework.beans.factory.config.PropertyPlaceholderConfigurer和
+		org.springframework.beans.factory.config.PropertyOverrideConfigurer是两个比较常用的BeanFactoryPostProcessor。
+		Spring还允许我们通过org.springframework.beans.factory.config.CustomEditorConfigurer来注册自定义的PropertyEditor以补助容器中默认的PropertyEditor。
+					
+	4.4.3、bean的一生
+		getBean()方法第一次被调用时，不管是显式的还是隐式的， Bean实例化阶段的活动才会被触发，第二次被调用则会直接返回
+	容器缓存的第一次实例化完的对象实例（ prototype类型bean除外）。
+		Bean的实例化过程：
+		实例化bean对象；设置对象属性；检查Aware相关接口并设置相关依赖；
+		BeanPostProcessor前置处理；检查是否是InitializingBean以绝对是否调用afterProperties方法；检查时候配置有自定义的init-method；BeanPostProcessor后置处理；
+		注册必要的Destruction相关回调接口；使用中；是否实现DisposableBean接口；是否配置有自定义的destory方法。
+		（1）、Bean的实例化与BeanWrapper（设置或获取对象属性值）
+				容器在内部实现的时候，采用“策略模式（ Strategy Pattern）”来决定采用何种方式初始化bean实例。通常，可以通过反射
+			或者CGLIB动态字节码生成来初始化相应的bean实例或者动态生成其子类。
+				容器只要根据相应bean定义的BeanDefintion取得实例化信息，结合CglibSubclassingInstantiationStrategy以及不同的bean
+			定义类型，就可以返回实例化完成的对象实例。
+				BeanWrapper定义继承了org.springframework.beans.PropertyAccessor接口，可以以统一的方式对对象属性进行访问； 
+			BeanWrapper定义同时又直接或者间接继承了PropertyEditorRegistry和TypeConverter接口。
+		（2）、Aware接口
+				BeanFactory：
+					org.springframework.beans.factory.BeanNameAware：beanName设置
+					org.springframework.beans.factory.BeanClassLoaderAware：将对应加载当前bean的Classloader注入当前对象实例。
+					org.springframework.beans.factory.BeanFactoryAware：将BeanFactory注入当前对象实例。
+				Application：
+					org.springframework.context.ResourceLoaderAware：将当前ApplicationContext自身设置到对象实例。
+					org.springframework.context.ApplicationEventPublisherAware：ApplicationContext作为一个容器，同时还实现了
+				

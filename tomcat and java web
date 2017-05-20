@@ -1,0 +1,135 @@
+1、Tomcat结构：
+<Server>(代表整个Catalina Servlet容器,tomcat实例的顶层元素，可包含一个或多个Service)
+	<Service>(包含一个Engine元素以及一个或多个Connector元素，所有Connector共享同一个Engine元素)
+		<Connector/>(与客户程序实际交互的组件，负责接收客户请求，以及向客户返回响应结果)
+		<Engine>(每个Service元素只能包含一个Engine元素，Engine元素处理在同一个Service中所有Connector元素接收到的客户请求)
+			<Host>(一个Engine元素可以包含多个Host元素，每个Host元素定义了一个虚拟主机，它可以包含一个或多个Web应用)
+				<Context>(每个Context元素代表了运行在虚拟主机上的单个Web应用，一个Host元素中可以包含多个Context元素)
+				</Context>
+			</Host>
+		</Engine>
+	<Service>
+</Server>
+
+2、Tomcat的工作模式
+(1)、独立的Servlet容器
+(2)、进程内的Servlet容器
+(3)、进程外的Servlet容器
+
+3、Tomcat的目录结构
+/server/lib只可被Tomcat服务器访问
+/shared/lib可以被所有的Web应用访问，但不能被Tomcat服务器访问
+/common/lib可以被Tomcat服务器可所有的Web应用访问
+
+	在classes以及lib子目录下都可以存放Java类文件，在运行过程中，Tomcat的类装载器先装载
+classes目录下的类，再装载lib目录下的类。因此如果两个目录下存在同名的类，classes目录下的
+类具有优先权。	
+
+
+HTTP的请求方式包括DELETE,GET,OPTIONS,POST,PUT,TRACE,在HttpServlet类中分别提供了相应的方法
+doDelete(),doGet(),doOptions(),doPost(),doPut(),doTrace()。因此如果两个目录下存在同名的类，classes目录下的
+
+HTTP与HttpServlet
+Http请求：	请求方法URI协议/版本(GET/sample.jsp HTTP/1.1)
+			请求头(客户端环境和请求正文的信息)
+			请求正文(客户提交的查询字符串信息userName=aaa&password=1234)
+			
+Http相应：	协议 状态代码 描述
+			响应头(Response Header)
+			响应正文(服务器返回的HTML页面)
+			
+HttpServlet的功能：	根据客户发出的Http请求，生成相应的Http响应结果。
+
+创建HttpServlet：	1、扩展HttpServlet抽象类
+					2、覆盖HttpServlet的部分方
+					
+
+数据源(DataSource):
+1、数据源和连接池：在DataSource中事先建立了多个数据库连接，这些数据库连接保存在连接池(ConnectPool)中。
+Java程序访问数据库时，只需从连接池中取出空闲状态的数据库连接，当程序访问数据库结束，再将数据库连接放
+回连接池，可以提高访问数据库的效率。
+
+2、数据源和JNDI资源：DataSource对象由Tomcat提供，因此不能再程序中采用创建一个实例的方式来生成DataSource
+对象，而需要采用JNDI(Java Naming and Directory Interface)技术来获得DataSource对象的引用。Tomcat把DataSource
+作为一种可配置的JNDI资源来处理。生成DataSource对象的工厂为org.apache.commons.dbcp.BasicDataSourceFactory。
+
+
+					
+Session的使用和管理：					
+web服务器跟踪客户的状态：	建立含有跟踪数据的隐藏表格字段
+							重写包含额外参数的URL
+							使用持续的Cookie
+							使用Servlet API中的Session机制
+
+Session简介：一段时间内，单个客户与Web服务器的一连串相关的交互过程。
+在以下情况中，Session将结束生命周期，Servlet容器会将Session所占用的资源释放掉：
+1、客户端关闭浏览器
+2、Session过期
+3、服务器调用了HttpSession的invalidate()方法
+
+Session过期是指当Session开始后，在一段时间内客户没有和Web服务器交互，这个Session会失效，HttpSession类的
+setMaxInactiveInterval()方法可以设置允许Session保持不活动状态的时间(单位为秒)，如果超过这一时间，Session失效。																	
+
+Session跟踪：如果浏览器不支持Cookie，Servlet容器可以重写客户请求的URL，把Session ID添加到URL信息中。
+HttpServletResponse接口提供了重写URL的方法：public java.lang.String encodeURL(java.lang.String url)
+该方法的实现机制：	先判断当前Web组件是否启用Session，如果没有启用Session，例如在JSP中声明<%@ page session="false">,
+					或者 已经执行了session.invalidate()方法，那么直接返回参数url；
+					再判断浏览器是否支持Cookie，如果支持Cookie，就直接返回参数url；如果不支持Cookie，就在参数url中
+					加入Session ID信息，然后返回修改后的url(<a href="<%=response.encodeURL("login.jsp")%>">)
+
+Session的持久化：	Session的持久化是由Session Manager来管理的。
+					Tomcat提供了两个实现类：org.apache.catalina.session.StandardManager、
+											org.apache.catalina.session.PersistentManager
+
+1、StandardManager：默认的Session Manager。
+实现机制：当Tomcat服务器关闭或重启，或者Web应用被重新加载时，会对在内存中的HttpSession对象进行持久化，把他们保存
+到文件系统中，默认文件：<CATALINA_HOME>/work/Catalina/hostname/applicationname/SESSIONS.scr;重启Tomcat服务器后，
+Tomcat服务器把SESSIONS.scr中的持久化HttpSession对象加载到内存中，此时对客户端来说，依然处于同一个Session中。
+
+2、PersistentManager：把Session对象保存到Session Store中，他提供了比StandardManager更灵活的Session管理功能
+当Tomcat服务器关闭或重启，或者Web应用被重新加载时，会对在内存中的HttpSession对象进行持久化，把他们保存到Session Store中；
+具有容错功能，及时把Session备份到Session Store中，当Tomcat服务器意外关闭后再重启时，可以从Session Store中恢复Session对象；
+可以灵活控制在内存中的Session数目，将部分Session转移到Session Store中;Tomcat实现持久化Session Store的接口为org.apache.Catalina.Storre，
+目前提供了两个实现这一接口的类：org.apache.Catalina.FileStore,org.apache.Catalina.JDBCStore
+
+
+JavaBean：可以重复使用、且跨平台的软件组件。
+一种是有用户界面(UI、User Interface)的JavaBean；另一种是没有用户界面，主要负责处理事务(如数据运算，操作数据库)的JavaBean。
+
+JavaBean特性：	1、JavaBean是一个public类
+				2、JavaBean有一个不带参数的构造方法
+				3、JavaBean通过setter方法设置属性，通过getter方法获得属性。
+				
+JSP访问JavaBean：
+1、导入JavaBean类
+	<%@ page import="mypack.CounterBean" %>				
+2、声明JavaBean对象
+	<jsp:useBean id="myBean" class="mypack.CounterBean" scope="session"/> 相当于 CounterBean myBean = new CounterBean();
+	如果在scope制定的范围内，该JavaBean对象以及存在，则<jsp:useBean>标签不会生成新的JavaBean对象，而是直接获得其引用。
+3、访问JavaBean属性
+	将JavaBean的某个属性输出到网页上：<jsp:getProperty name="myBean" property="count"/>
+	给JavaBean的属性赋值：<jsp:setProperty name="myBean" property="count" value="0">				
+					
+JavaBean的scope：
+scope=page：
+	每次请求访问JSP页面时，都会创建一个JavaBean对象。
+	JavaBean对象在以下情况会结束生命期：客户请求访问的当前JSP页面通过<forward>标记将请求转发到另一个文件
+										客户请求访问的当前JSP页面执行完毕并向客户端发回响应
+					
+scope=request：
+	每次请求访问JSP页面时，都会创建一个JavaBean对象。
+	JavaBean对象的有效范围：客户请求访问的当前JSP页面
+							和当前JSP页面共享同一个客户请求的网页，即当前jsp页面中<%@ include>指令以及<forward>标记包含的其他jsp页面
+	当所有共享同一个客户请求的jsp页面执行完毕并向客户端发回响应时，JavaBean对象结束生命周期。
+	JavaBean对象作为属性保存在HttpRequest对象中，属性名为JavaBean的id，属性值3为JavaBean对象，可以通过HttpRequest.getAttribute()获得
+
+scope=session：
+	JavaBean对象被创建后，存在于整个Session的生命周期内，同一个Session中的jsp文件共享这个对象。
+	可以通过HttpSession.getAttribute()获得
+					
+scope=application：
+	JavaBean对象被创建后，存在于整个web应用的生命周期内，web应用中的所有jsp文件共享这个对象。
+	可以通过application.getAttribute()获得				
+
+
+
